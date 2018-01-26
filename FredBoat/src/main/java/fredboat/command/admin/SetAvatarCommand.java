@@ -20,12 +20,14 @@ import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.CheckReturnValue;
 import javax.annotation.Nonnull;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.Map;
 
 /**
@@ -62,12 +64,20 @@ public class SetAvatarCommand extends Command implements ICommandRestricted {
         URI resolve = BRANDING_DIR.resolve(file);
 
         boolean isRelative = BRANDING_DIR.relativize(resolve).equals(file);
-        if (!isRelative) {
+        if (!checkRelativeToBrandingDir(file)) {
             log.error("An avatar is not relative",
                     new IllegalArgumentException(String.format("%s (%s) is not relative", name, file)));
         }
 
         return Maps.immutableEntry(name, resolve);
+    }
+
+    @CheckReturnValue
+    private static boolean checkRelativeToBrandingDir(URI uri) {
+        URI resolve = BRANDING_DIR.resolve(uri);
+
+        //if the relative form of the resolved URI is equal to the original, the original was relative as well
+        return BRANDING_DIR.relativize(resolve).equals(uri);
     }
 
     public SetAvatarCommand(String name, String... aliases) {
@@ -90,6 +100,16 @@ public class SetAvatarCommand extends Command implements ICommandRestricted {
             return;
         }
         if (imageUrl != null && imageUrl.getScheme() != null) {
+            if (imageUrl.getScheme().equals("branding")) {
+                // for branding:resource.png URLs
+
+                // clear off the 'scheme'
+                imageUrl = URI.create(imageUrl.getSchemeSpecificPart());
+                if (!checkRelativeToBrandingDir(imageUrl)) {
+                    throw new MessagingException("url is not relative");
+                }
+                imageUrl = BRANDING_DIR.resolve(imageUrl);
+            }
             Icon avatar;
             switch (imageUrl.getScheme()) {
                 case "http":
